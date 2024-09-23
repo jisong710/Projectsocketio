@@ -1,46 +1,67 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const socketIO = require('socket.io');
-const cors = require('cors'); // Tambahkan CORS
+const fs = require('fs');
+const cors = require('cors');
+const bodyParser = require('body-parser'); 
 
-// Inisialisasi Express
 const app = express();
-app.use(cors()); // Gunakan CORS pada seluruh route
+app.use(cors());
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+const httpsOptions = {
+    key: fs.readFileSync('server.key'),
+    cert: fs.readFileSync('server.cert')
+};
 
-const server = http.createServer(app);
+const httpServer = http.createServer(app);
+const httpsServer = https.createServer(httpsOptions, app);
 
-// Inisialisasi Socket.io dengan konfigurasi CORS
-const io = socketIO(server, {
+// Inisialisasi Socket.io untuk kedua server
+const ioHttp = socketIO(httpServer, {
     cors: {
-        origin: '*', // Mengizinkan semua origin
-        methods: ['GET', 'POST'] // Mengizinkan metode GET dan POST
+        origin: '*',
+        methods: ['GET', 'POST']
     }
 });
 
-// Endpoint default untuk mengecek server
+const ioHttps = socketIO(httpsServer, {
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+    }
+});
+
+// Endpoint default
 app.get('/', (req, res) => {
     res.send('Server Socket.io berjalan!');
 });
 
 // Event saat client terhubung
-io.on('connection', (socket) => {
-    console.log('Pengguna terhubung:', socket.id);
+const setupSocketEvents = (io) => {
+    io.on('connection', (socket) => {
+        console.log('Pengguna terhubung:', socket.id);
 
-    // Event saat menerima pesan dari client
-    socket.on('message', (msg) => {
-        console.log('Pesan dari client:', msg);
-        
-        io.emit("message", msg);
-        
-    });
+        socket.on('message', (msg) => {
+            console.log('Pesan dari client:', msg);
+            io.emit("message", msg);
+        });
 
-    // Event saat client terputus
-    socket.on('disconnect', () => {
-        console.log('Pengguna terputus:', socket.id);
+        socket.on('disconnect', () => {
+            console.log('Pengguna terputus:', socket.id);
+        });
     });
+};
+
+setupSocketEvents(ioHttp);
+setupSocketEvents(ioHttps);
+
+// Menjalankan server pada port 80 dan 443
+httpServer.listen(80, () => {
+    console.log('Server Socket.io berjalan pada port 80 (HTTP)');
 });
 
-// Menjalankan server pada port 3000
-server.listen(3000, () => {
-    console.log('Server Socket.io berjalan pada port 3000');
+httpsServer.listen(443, () => {
+    console.log('Server Socket.io berjalan pada port 443 (HTTPS)');
 });
